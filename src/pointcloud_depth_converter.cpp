@@ -102,7 +102,8 @@ void PointCloudToDepthConverter::createDistortionMaps()
 
 PointCloudToDepthConverter::ProcessResult PointCloudToDepthConverter::processCloudAndImage(
     const pcl::PointCloud<pcl::PointXYZ> &cloud,
-    const cv::Mat &image)
+    const cv::Mat &image,
+    bool want_colored_cloud)
 {
     ProcessResult result;
     result.success = false;
@@ -123,10 +124,10 @@ PointCloudToDepthConverter::ProcessResult PointCloudToDepthConverter::processClo
 
         cv::Mat processed_depth = postProcessDepthImage(depth_img);
 
-        pcl::PointCloud<pcl::PointXYZRGB> colored_cloud = generateColoredCloud(processed_depth, image);
+        if (want_colored_cloud)
+            result.colored_cloud = generateColoredCloud(processed_depth, image);
 
         result.depth_image = processed_depth;
-        result.colored_cloud = colored_cloud;
         result.success = true;
     }
     catch (const std::exception &e)

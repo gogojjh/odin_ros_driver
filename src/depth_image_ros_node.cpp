@@ -34,7 +34,10 @@ DepthImageRosNode::DepthImageRosNode(ros::NodeHandle &nh, ros::NodeHandle &pnh)
 
     cloud_sub_.subscribe(nh_, cloud_raw_topic_, 1);
     color_sub_.subscribe(nh_, color_raw_topic_, 1);
-    color_compressed_sub_.subscribe(nh_, color_compressed_topic_, 1);
+    // 2026-08-25 延迟优化：压缩图订阅从未被下面的同步器使用（Sync 只挂
+    // cloud_sub_ + color_sub_ 两路），订阅它只是让 6MB/帧的 JPEG 流白白
+    // 传进本进程后丢弃——本进程还是该话题的唯一订阅者。停掉。
+    // color_compressed_sub_.subscribe(nh_, color_compressed_topic_, 1);
 
     sync_ = std::make_shared<Sync>(MySyncPolicy(10), cloud_sub_, color_sub_);
     sync_->registerCallback(boost::bind(&DepthImageRosNode::syncCallback, this, _1, _2));
@@ -132,7 +135,10 @@ void DepthImageRosNode::syncCallback(const sensor_msgs::PointCloud2ConstPtr &clo
         return;
     }
 
-    auto result = depth_converter_->processCloudAndImage(cloud, img_raw);
+    // 2026-08-25 延迟优化：/odin1/depth_img_competetion_cloud 没人订阅时不生成
+    // 彩色点云（publishDepthCloud 对空云本来就不发，这里连生成都省掉）。
+    auto result = depth_converter_->processCloudAndImage(
+        cloud, img_raw, depth_cloud_pub_.getNumSubscribers() > 0);
 
     if (!result.success)
     {

@@ -1,0 +1,39 @@
+<launch>
+    <!-- 
+        Usage: roslaunch odin_ros_driver odin1_ros1.launch
+    -->
+    
+    <!-- Set node name -->
+    <arg name="node_name" default="host_sdk_sample"/>
+    
+    <!-- Set parameter file path -->
+    <arg name="config_file" default="$(find odin_ros_driver)/config/control_command.yaml"/>
+        
+    <!-- Launch main node -->
+    <node name="$(arg node_name)" pkg="odin_ros_driver" type="host_sdk_sample" output="screen">
+        <param name="config_file" value="$(arg config_file)"/>
+    </node>
+
+    <node pkg="odin_ros_driver" type="pcd2depth_node" name="pcd2depth_node" output="screen" >
+        <rosparam command="load" file="$(find odin_ros_driver)/config/control_command.yaml"/>
+        <!-- calib_file_path left unset: node falls back to the shared runtime dir (~/.ros/odin_ros_driver/calib.yaml) -->
+    </node>
+
+    <!-- 2026-08-25 延迟优化：下面两个节点整体停用（必须一起）。
+         image_overlay_node 每帧对 1600×1296 做逐像素双重循环画叠加图，
+         输出 /odin1/overlay_image 全趟零订阅（rosmaster 日志普查证实），
+         且 yaml 里 sendoverlay:0 本来就想关、但 ROS1 main 没读这个开关；
+         cloud_reprojection_node 的唯一下游就是 image_overlay_node，
+         一起停省约 0.5–1 个 CPU 核。要临时恢复调试就取消注释。 -->
+    <!--
+    <node pkg="odin_ros_driver" type="cloud_reprojection_node" name="cloud_reprojection_node" output="screen" >
+        <rosparam command="load" file="$(find odin_ros_driver)/config/control_command.yaml"/>
+        <!- - calib_file_path left unset: node falls back to the shared runtime dir (~/.ros/odin_ros_driver/calib.yaml) - ->
+    </node>
+
+    <node pkg="odin_ros_driver" type="image_overlay_node" name="image_overlay_node" output="screen" >
+        <rosparam command="load" file="$(find odin_ros_driver)/config/control_command.yaml"/>
+    </node>
+    -->
+    
+</launch>

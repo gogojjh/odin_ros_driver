@@ -50,8 +50,11 @@ public:
     explicit PointCloudToDepthConverter(const CameraParams &params);
 
 
+    // want_colored_cloud=false 时跳过彩色点云生成（逐点采样上色的双重循环，
+    // 成本与深度图本体同量级）——彩色云只用于可视化，没人订阅时是纯浪费。
     ProcessResult processCloudAndImage(const pcl::PointCloud<pcl::PointXYZ> &cloud,
-                                       const cv::Mat &image);
+                                       const cv::Mat &image,
+                                       bool want_colored_cloud = true);
 
 	cv::Mat customResize(const cv::Mat& src, const cv::Size& size);
     const CameraParams &getCameraParams() const { return params_; }
