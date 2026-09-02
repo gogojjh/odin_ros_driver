@@ -6,7 +6,21 @@ register_keys:
   # 0: use odin internal system time as data time stamp, typical and recommended;
   # 1: use host ros time (upon receive) as data time stamp, only use if you specifically require this setup, not recommended for most users
   # 2: align odin1 time to host time, timestamp is the sensor data reception time on host time axis
-  use_host_ros_time: 0  # Changed to 0 to use device timestamp without PTP offset correction
+  # 2026-09-02 从 0 改成 2。
+  # 0 发的是**设备开机计时**（实测 375.389 / 3045.662 这种数），不是墙钟。
+  # 后果：桥接没法直接转发这个戳，只能统一盖 rospy.Time.now()，于是深度图的
+  # 真实采样时刻被扔掉，C++ 那道 10 毫秒的深度-位姿同步检查恒真、拦不住任何
+  # 东西，投影用的位姿最多可能旧 100 毫秒。狗一动，点就落到错的格子里，
+  # 空地被标成障碍（2026-09-01 实测：狗周围确定占据格从 0% 涨到 35.5%）。
+  # 2 = 保留设备戳、减去 PTP 平滑偏移搬到主机时间轴，设备时钟内部的精确相对
+  # 关系完整保留，只是整体平移。实测这个偏移很稳（529 秒内漂 ±10 毫秒）。
+  # 不要选 1：它在**发布时**盖 ros::Time::now()，每条话题各自吃自己的 USB
+  # 传输和解码延迟，跨话题的相对关系反而被破坏，厂商也标了 not recommended。
+  # ⚠️ 模式 2 会静默退化：PTP 偏移靠设备推 LIDAR_DT_NTP 流，推不来时偏移恒为
+  # 0，行为跟模式 0 一模一样且不报任何错。改完必须实测确认：
+  #     rostopic echo -n1 /odin1/odometry/header
+  # stamp 要变成 1.7e9 量级，还是 375 那种就是没生效。
+  use_host_ros_time: 2
 
   streamctrl: 1           # 0: off; 1: on
 
@@ -20,7 +34,7 @@ register_keys:
   # undistort rgb image processed from decoded rgb data.
   # depends on sendrgb. related camera parameters can be found in ws/src/odin_ros_driver/config/calib.yaml
   # Processed on host device
-  sendrgbundistort: 0    # 0: off; 1: on.
+  sendrgbundistort: 1    # 0: off; 1: on.
 
   # IMU data
   sendimu: 1              # 0: off; 1: on
@@ -53,7 +67,12 @@ register_keys:
   # dtof sensor frame rate. Supported values: 100 (10fps) or 145 (14.5fps)
   # Higher frame rate provides smoother point cloud data but may increase data bandwidth
   # Note: value is multiplied by 10 (e.g., 145 means 14.5fps)
-  dtof_fps: 100           # 100: 10fps; 145: 14.5fps 290: dtof 10hz + camera 29hz(not support)
+  # 2026-08-27: 10fps 时 depth_img_competetion 实测周期抖动 0.080~0.130s，
+  # SRU 的控制门控要凑够 3 帧(≥0.2s)才跑一步，10fps 下 3 帧=0.29s，跟 5Hz
+  # 目标贴得太近，抖动稍大就掉到 3.3~4.5Hz(见 navigation_policy_node.py 的
+  # 控制周期门控注释)。14.5fps 下 3 帧=0.207s，跟 0.2s 目标贴合更紧，
+  # 输出节奏更稳。代价是深度数据带宽略增。
+  dtof_fps: 145           # 100: 10fps; 145: 14.5fps 290: dtof 10hz + camera 29hz(not support)
   # slam cloud data
   sendcloudslam: 1        # 0: off; 1: on
 
@@ -64,11 +83,11 @@ register_keys:
   # depth completion demo, high computing resource usage. 
   # for more information please refer to the readme file.
   # Processed on host device
-  senddepth: 0            # 0: off; 1: on
+  senddepth: 1            # 0: off; 1: on
 
   # cloud reprojection demo, projects cloud_slam to camera image using odometry
   # Processed on host device
-  sendreprojection: 0    # 0: off; 1: on
+  sendreprojection: 1    # 0: off; 1: on
 
   # image overlay settings - overlays reprojected points on camera image
   # Processed on host device
