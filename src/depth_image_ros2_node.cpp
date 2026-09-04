@@ -74,6 +74,11 @@ PointCloudToDepthConverter::CameraParams DepthImageRos2Node::loadCameraParams()
     params.scale = this->declare_parameter<double>("scale", 7.0);
     params.point_sampling_rate = this->declare_parameter<int>("point_sampling_rate", 5);
 
+    // 2026-09-04：与 ROS1 节点保持一致，见 pointcloud_depth_converter.hpp。
+    params.min_range = this->declare_parameter<double>("min_range", 0.15);
+    params.hole_fill_tol = this->declare_parameter<double>("hole_fill_tol", 0.15);
+    params.hole_fill_min_neighbors = this->declare_parameter<int>("hole_fill_min_neighbors", 3);
+
     std::vector<double> Tcl_vec_param = this->declare_parameter<std::vector<double>>("Tcl_0", std::vector<double>(16, 0.0));
     if (Tcl_vec_param.size() == 16)
     {

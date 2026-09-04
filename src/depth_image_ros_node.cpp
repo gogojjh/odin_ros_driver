@@ -70,6 +70,12 @@ PointCloudToDepthConverter::CameraParams DepthImageRosNode::loadCameraParams()
     pnh_.param<double>("scale", params.scale, 7.0);
     pnh_.param<int>("point_sampling_rate", params.point_sampling_rate, 5);
 
+    // 2026-09-04：点云投影阶段的三道门，详见 pointcloud_depth_converter.hpp。
+    // 默认值就是我们真机用的值，launch 不写也生效。
+    pnh_.param<double>("min_range", params.min_range, 0.15);
+    pnh_.param<double>("hole_fill_tol", params.hole_fill_tol, 0.15);
+    pnh_.param<int>("hole_fill_min_neighbors", params.hole_fill_min_neighbors, 3);
+
     std::vector<double> Tcl_vec_param;
     if (pnh_.getParam("Tcl_0", Tcl_vec_param) && Tcl_vec_param.size() == 16)
     {
@@ -100,6 +106,8 @@ PointCloudToDepthConverter::CameraParams DepthImageRosNode::loadCameraParams()
     ROS_INFO("Distortions: k2=%f k3=%f k4=%f k5=%f k6=%f k7=%f",
              params.k2, params.k3, params.k4, params.k5, params.k6, params.k7);
     ROS_INFO("Scale: %f, Point sampling rate: %d", params.scale, params.point_sampling_rate);
+    ROS_INFO("Projection gates: min_range=%.3f m, hole_fill_tol=%.3f m, hole_fill_min_neighbors=%d",
+             params.min_range, params.hole_fill_tol, params.hole_fill_min_neighbors);
     ROS_INFO_STREAM("Extrinsics (Tcl):\n"
                     << params.Tcl);
 

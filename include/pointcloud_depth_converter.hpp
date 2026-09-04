@@ -35,6 +35,16 @@ public:
         double scale;                  
         int point_sampling_rate;      
         Eigen::Matrix4d Tcl;       
+
+        // --- 2026-09-04 追加：投影阶段的三道门。都给类内默认值，任何构造路径
+        //     忘了设也不会读到未初始化的垃圾。
+        // 小于这个距离的点直接不要（米）。原始云里约 1% 的点在 0.10 m 以内、
+        // 6.5% 是 (0,0,0) 占位点，之前只是碰巧投影出界才没进图，不是被有意拒绝。
+        double min_range = 0.15;
+        // 补洞时允许的邻居深度落差（米）。超过这个值说明跨了深度断崖，不补。
+        double hole_fill_tol = 0.15;
+        // 补一个洞至少要有几个真测到的邻居。
+        int hole_fill_min_neighbors = 3;
     };
 
 
@@ -81,7 +91,10 @@ private:
  
     void createDistortionMaps();
 
-    cv::Mat projectCloudToDepth(const pcl::PointCloud<pcl::PointXYZ> &cloud_in_cam);
+    // cloud_lidar 只用来算真实距离（做最小量程门）；cloud_in_cam 是被 Kcl_
+    // 变换过的、x/y 已经乘上内参的齐次像素坐标，两者同序等长。
+    cv::Mat projectCloudToDepth(const pcl::PointCloud<pcl::PointXYZ> &cloud_lidar,
+                                const pcl::PointCloud<pcl::PointXYZ> &cloud_in_cam);
 
 
     cv::Mat postProcessDepthImage(const cv::Mat &depth_img);
