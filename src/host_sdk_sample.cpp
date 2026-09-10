@@ -66,7 +66,7 @@ limitations under the License.
     #include "odin_ros_driver/SaveMap.h"
     #include "odin_ros_driver/ResetAlgo.h"
 #endif
-#define ros_driver_version "0.14.3"
+#define ros_driver_version "0.14.4"
 #define required_firmware_version_major 0
 #define required_firmware_version_minor 13
 #define required_firmware_version_patch 0
@@ -2643,6 +2643,12 @@ int main(int argc, char *argv[])
             #endif
             return -1;
         }
+
+        // Re-arm SIGINT/SIGTERM handlers: lidar_system_init() installs the
+        // SDK's internal crash handler which overrides our handlers above and
+        // prints a backtrace on Ctrl+C / kill, confusing users.
+        signal(SIGINT, signal_handler);
+        signal(SIGTERM, signal_handler);
         
         // Configure SDK IMU smooth sending AFTER lidar_system_init
         // SDK now defaults to disabled, only enable if configured

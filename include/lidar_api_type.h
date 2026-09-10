@@ -44,7 +44,7 @@ typedef enum {
  * │   imageCount: 1                                                                             │
  * │   imageList[0]: NV12 image data                                                             │
  * │     - pAddr: uint8_t* (Y plane followed by UV plane)                                        │
- * │     - width: 1536, height: 1280                                                             │
+ * │     - width: 1600, height: 1296                                                             │
  * │     - length: width * height * 3 / 2 bytes                                                  │
  * ├─────────────────────────────────────────────────────────────────────────────────────────────┤
  * │ LIDAR_DT_RAW_IMU                                                                            │
@@ -66,10 +66,10 @@ typedef enum {
  * │   imageList[1]: Point cloud XYZ                                                             │
  * │     - pAddr: float* (x,y,z interleaved)                                                     │
  * │     - length: 256 * 192 * 3 * sizeof(float)                                                 │
- * │   imageList[2]: Confidence                                                                  │
+ * │   imageList[2]: Intensity/Reflectivity                                                      │
  * │     - pAddr: uint8_t*                                                                       │
  * │     - length: 256 * 192 * sizeof(uint8_t)                                                   │
- * │   imageList[3]: Intensity/Reflectivity                                                      │
+ * │   imageList[3]: Confidence                                                                  │
  * │     - pAddr: uint16_t*                                                                      │
  * │     - length: 256 * 192 * sizeof(uint16_t)                                                  │
  * ├─────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -361,9 +361,9 @@ typedef enum {
  *
  * Field meaning and valid ranges:
  *   format : pixel format, see lidar_rgb_format_e
- *   width  : image width in pixels (device-dependent, e.g. 1536, 1280, 640)
- *   height : image height in pixels (device-dependent, e.g. 1280, 720, 480)
- *   fps    : target frame rate * 10 (e.g. 300 = 30fps, 150 = 15fps)
+ *   width  : image width in pixels (device-dependent, e.g. 1600)
+ *   height : image height in pixels (device-dependent, e.g. 1296)
+ *   fps    : target frame rate * 10 (e.g. 300 = 30fps, 145 = 14.5fps)
  *
  * Not all combinations are valid. Invalid combinations return rc = -1
  * with device-side CMD_CODE_FAIL. Use lidar_get_device_status() to
