@@ -18,7 +18,7 @@ This driver package provides core functionality for point cloud SLAM application
 
 ## 1. Version
 
-Current version: v0.14.3
+Current version: v0.14.4
 
 Required device firmware version: v0.14.0
 

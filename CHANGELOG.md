@@ -1,3 +1,7 @@
+0.14.4 2260910
+1.modify lidar_api_type.h RGB comments
+2.update sdk to fix signal printf backtrace
+
 0.14.3 20260903
 1.Fix crash problem
 
