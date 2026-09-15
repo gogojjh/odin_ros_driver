@@ -153,6 +153,8 @@ int g_cloud_raw_confidence_threshold = 35;
 int g_cloud_raw_near_range_cm = 200;
 int g_cloud_raw_near_confidence_threshold = 500;
 int g_cloud_raw_drop_push_to_max_range = 1;
+int g_cloud_raw_lidar_height_cm = 39;
+int g_cloud_raw_ground_protect_cm = 10;
 int g_dtof_fps = 145;  // DTOF sensor frame rate: 100 (10fps) or 145 (14.5fps)
 
 std::filesystem::path log_root_dir_;
@@ -267,6 +269,19 @@ class RosNodeControlImpl : public RosNodeControlInterface {
             return cloud_raw_drop_push_to_max_range;
         }
 
+        void setCloudRawLidarHeight(float height_m) override {
+            cloud_raw_lidar_height = height_m;
+        }
+        float cloudRawLidarHeight() const override {
+            return cloud_raw_lidar_height;
+        }
+        void setCloudRawGroundProtect(float height_m) override {
+            cloud_raw_ground_protect = height_m;
+        }
+        float cloudRawGroundProtect() const override {
+            return cloud_raw_ground_protect;
+        }
+
         void setTfExtraPublishRate(int rate_hz) override {
             tf_extra_publish_rate = rate_hz;
         }
@@ -282,6 +297,8 @@ class RosNodeControlImpl : public RosNodeControlInterface {
         float cloud_raw_near_range = 2.0f;
         int cloud_raw_near_confidence_threshold = 500;
         bool cloud_raw_drop_push_to_max_range = true;
+        float cloud_raw_lidar_height = 0.39f;
+        float cloud_raw_ground_protect = 0.10f;
         int tf_extra_publish_rate = 0;
     };
     
@@ -2324,6 +2341,10 @@ int main(int argc, char *argv[])
             get_key_value("cloud_raw_drop_push_to_max_range", 1);
         g_rosNodeControlImpl.setCloudRawDropPushToMaxRange(
             g_cloud_raw_drop_push_to_max_range != 0);
+        g_cloud_raw_lidar_height_cm = get_key_value("cloud_raw_lidar_height_cm", 39);
+        g_cloud_raw_ground_protect_cm = get_key_value("cloud_raw_ground_protect_cm", 10);
+        g_rosNodeControlImpl.setCloudRawLidarHeight(g_cloud_raw_lidar_height_cm / 100.0f);
+        g_rosNodeControlImpl.setCloudRawGroundProtect(g_cloud_raw_ground_protect_cm / 100.0f);
         g_dtof_fps      = get_key_value("dtof_fps", 145);  // Read DTOF frame rate from config (100=10fps, 145=14.5fps)
         g_sendodom      = get_key_value("sendodom", 1);
         g_send_odom_baselink_tf = get_key_value("send_odom_baselink_tf", 0);

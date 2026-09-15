@@ -259,6 +259,13 @@ class RosNodeControlInterface {
         // false = 清零（下游当没测到，会被补洞填回来）。
         virtual void setCloudRawDropPushToMaxRange(bool on) = 0;
         virtual bool cloudRawDropPushToMaxRange() const = 0;
+        // 地面保护：离地高度低于 groundProtect 的点一律不砍（雷达离地高度
+        // 由 lidarHeight 给）。地面回波本来就强、不是串扰的来源，砍了反而
+        // 让那个方向的深度变成远值，害得遮挡测试误判「看得见」。
+        virtual void setCloudRawLidarHeight(float height_m) = 0;
+        virtual float cloudRawLidarHeight() const = 0;
+        virtual void setCloudRawGroundProtect(float height_m) = 0;
+        virtual float cloudRawGroundProtect() const = 0;
         virtual void setTfExtraPublishRate(int rate_hz) = 0;
         virtual int getTfExtraPublishRate() const = 0;
     };
@@ -721,6 +728,9 @@ void publishIntensityCloud(capture_Image_List_t* stream, int idx)
         // 被砍掉的点是「推到满量程」（标成空地）还是「清零」（当没测到）。
         // 默认推到满量程，理由见下面 drop 分支里的注释。
         const bool  drop_push_to_max_range = getRosNodeControl()->cloudRawDropPushToMaxRange();
+        // 地面保护线（毫米）：点的离地高度低于它就不参与近距离门。
+        const float lidar_h_mm   = getRosNodeControl()->cloudRawLidarHeight() * 1000.0f;
+        const float ground_pr_mm = getRosNodeControl()->cloudRawGroundProtect() * 1000.0f;
         const float near_range_mm_sq = near_range * near_range * 1000.0f * 1000.0f;
         const bool  near_gate_on = (near_range > 0.0f && near_conf > 0);
         for (int i = 0; i < total_points; ++i) {
@@ -730,7 +740,23 @@ void publishIntensityCloud(capture_Image_List_t* stream, int idx)
                 const float mx = xyz_data_f[i * 3 + 0];
                 const float my = xyz_data_f[i * 3 + 1];
                 const float mz = xyz_data_f[i * 3 + 2];
-                drop = (mx * mx + my * my + mz * mz) < near_range_mm_sq;
+                // ⚠️ 地面保护：离地高度低于 ground_pr_mm 的点一律放行。
+                // 上下轴是 xyz_data_f[i*3+1]（输出时的 z），雷达离地
+                // lidar_h_mm，所以离地高度 = 那个分量 + 雷达高。
+                // 为什么要保护地面：17 帧实测，地面点（离地 |h|<0.08 米）
+                // 只有 5.4% 的 confidence 低于 500 —— 回波本来就强，**不是
+                // 串扰的来源**。不保护的话这道门会砍掉 16339 个地面点
+                // （占被砍总数的 37%），而砍掉的后果不是「少一个点」：
+                // 那个方向的深度会被推成 6.40 米，于是 rgb_overlay 的遮挡
+                // 测试（zd >= depth_trust_m 走「不可信」分支）误判成「看得见」，
+                // 本该被地面挡住的节点照样画给大模型。
+                // 加 0.10 米保护带之后实测：地面砍 0%、贴地矮物（0.08~0.20 米）
+                // 只砍 1.3%、障碍带（0.20~0.90 米）砍 16.8% —— 刀口集中在
+                // 会变成障碍的那一层，正是假墙所在的高度。
+                const float h_mm = my + lidar_h_mm;
+                if (h_mm >= ground_pr_mm) {
+                    drop = (mx * mx + my * my + mz * mz) < near_range_mm_sq;
+                }
             }
             if (drop) {
                 // ⚠️ 被近距离门砍掉的点**不能清零**，要保持方向、把距离推到

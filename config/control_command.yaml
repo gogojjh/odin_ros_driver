@@ -81,13 +81,30 @@ register_keys:
   # 回退：把 cloud_raw_near_confidence_threshold 设 0（或 near_range_cm 设 0）
   #   即可整条关掉，然后重启驱动 —— 不用重新编译。
   cloud_raw_near_range_cm: 200
-  cloud_raw_near_confidence_threshold: 500
+  cloud_raw_near_confidence_threshold: 400
   # 被上面那道门砍掉的点怎么写回点云：
   #   1 = 保持方向、把距离推到满量程 6.40 米（下游会把这个方向标成**空地**）
   #   0 = 清零成 (0,0,0)（下游当「没测到」——⚠️ 会被 Pass B 补洞用邻居深度填回来，
   #       而反光串扰成片且深度一致，正好满足补洞条件，等于白砍）
   # 默认 1。详见 host_sdk_sample.h 里 drop 分支的注释。
   cloud_raw_drop_push_to_max_range: 1
+
+  # 地面保护：离地高度低于 cloud_raw_ground_protect_cm 的点，**一律不参与**
+  # 上面那道近距离门。cloud_raw_lidar_height_cm 是雷达离地高度（点云的上下轴
+  # 是以雷达自己为原点的，要加上它才是离地高度）。
+  # 为什么要保护地面：17 帧实测，地面点（离地 |h|<0.08 米）只有 5.4% 的
+  # confidence 低于 500 —— 回波本来就强，**不是串扰的来源**。
+  # 不保护的话这道门会砍掉 16339 个地面点（占被砍总数的 37%），而后果不是
+  # 「少一个点」：那个方向的深度会被推成 6.40 米，于是 rgb_overlay 的遮挡测试
+  # （zd >= depth_trust_m 时走「不可信」分支）误判成「看得见」，本该被地面
+  # 挡住的节点照样画给大模型。
+  # 实测（保护带 0.10 米、conf<400、2 米内）：
+  #   地面 |h|<0.08        砍 0.0%
+  #   贴地矮物 0.08~0.20   砍 1.3%
+  #   障碍带 0.20~0.90     砍 16.8%   ← 刀口集中在这层，正是假墙所在的高度
+  # 保护带越大越安全但砍得越少：0.08 → 砍 27226 个、0.10 → 26527、0.20 → 24035。
+  cloud_raw_lidar_height_cm: 39
+  cloud_raw_ground_protect_cm: 10
   
   # dtof sensor frame rate. Supported values: 100 (10fps) or 145 (14.5fps)
   # Higher frame rate provides smoother point cloud data but may increase data bandwidth
