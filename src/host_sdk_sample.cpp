@@ -152,6 +152,7 @@ int g_save_log = 0;
 int g_cloud_raw_confidence_threshold = 35;
 int g_cloud_raw_near_range_cm = 200;
 int g_cloud_raw_near_confidence_threshold = 500;
+int g_cloud_raw_drop_push_to_max_range = 1;
 int g_dtof_fps = 145;  // DTOF sensor frame rate: 100 (10fps) or 145 (14.5fps)
 
 std::filesystem::path log_root_dir_;
@@ -259,6 +260,13 @@ class RosNodeControlImpl : public RosNodeControlInterface {
             return cloud_raw_near_confidence_threshold;
         }
 
+        void setCloudRawDropPushToMaxRange(bool on) override {
+            cloud_raw_drop_push_to_max_range = on;
+        }
+        bool cloudRawDropPushToMaxRange() const override {
+            return cloud_raw_drop_push_to_max_range;
+        }
+
         void setTfExtraPublishRate(int rate_hz) override {
             tf_extra_publish_rate = rate_hz;
         }
@@ -273,6 +281,7 @@ class RosNodeControlImpl : public RosNodeControlInterface {
         int cloud_raw_confidence_threshold = 35;
         float cloud_raw_near_range = 2.0f;
         int cloud_raw_near_confidence_threshold = 500;
+        bool cloud_raw_drop_push_to_max_range = true;
         int tf_extra_publish_rate = 0;
     };
     
@@ -2311,6 +2320,10 @@ int main(int argc, char *argv[])
         g_rosNodeControlImpl.setCloudRawNearRange(g_cloud_raw_near_range_cm / 100.0f);
         g_rosNodeControlImpl.setCloudRawNearConfidenceThreshold(
             g_cloud_raw_near_confidence_threshold);
+        g_cloud_raw_drop_push_to_max_range =
+            get_key_value("cloud_raw_drop_push_to_max_range", 1);
+        g_rosNodeControlImpl.setCloudRawDropPushToMaxRange(
+            g_cloud_raw_drop_push_to_max_range != 0);
         g_dtof_fps      = get_key_value("dtof_fps", 145);  // Read DTOF frame rate from config (100=10fps, 145=14.5fps)
         g_sendodom      = get_key_value("sendodom", 1);
         g_send_odom_baselink_tf = get_key_value("send_odom_baselink_tf", 0);

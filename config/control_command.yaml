@@ -82,6 +82,12 @@ register_keys:
   #   即可整条关掉，然后重启驱动 —— 不用重新编译。
   cloud_raw_near_range_cm: 200
   cloud_raw_near_confidence_threshold: 500
+  # 被上面那道门砍掉的点怎么写回点云：
+  #   1 = 保持方向、把距离推到满量程 6.40 米（下游会把这个方向标成**空地**）
+  #   0 = 清零成 (0,0,0)（下游当「没测到」——⚠️ 会被 Pass B 补洞用邻居深度填回来，
+  #       而反光串扰成片且深度一致，正好满足补洞条件，等于白砍）
+  # 默认 1。详见 host_sdk_sample.h 里 drop 分支的注释。
+  cloud_raw_drop_push_to_max_range: 1
   
   # dtof sensor frame rate. Supported values: 100 (10fps) or 145 (14.5fps)
   # Higher frame rate provides smoother point cloud data but may increase data bandwidth

@@ -255,6 +255,10 @@ class RosNodeControlInterface {
         virtual float cloudRawNearRange() const = 0;
         virtual void setCloudRawNearConfidenceThreshold(int threshold) = 0;
         virtual int cloudRawNearConfidenceThreshold() const = 0;
+        // 被门砍掉的点：true = 保持方向推到满量程（下游会标成空地），
+        // false = 清零（下游当没测到，会被补洞填回来）。
+        virtual void setCloudRawDropPushToMaxRange(bool on) = 0;
+        virtual bool cloudRawDropPushToMaxRange() const = 0;
         virtual void setTfExtraPublishRate(int rate_hz) = 0;
         virtual int getTfExtraPublishRate() const = 0;
     };
@@ -714,6 +718,9 @@ void publishIntensityCloud(capture_Image_List_t* stream, int idx)
         //    出问题就把 cloud_raw_near_confidence_threshold 调低或设 0 关掉。
         const float near_range = getRosNodeControl()->cloudRawNearRange();
         const int   near_conf  = getRosNodeControl()->cloudRawNearConfidenceThreshold();
+        // 被砍掉的点是「推到满量程」（标成空地）还是「清零」（当没测到）。
+        // 默认推到满量程，理由见下面 drop 分支里的注释。
+        const bool  drop_push_to_max_range = getRosNodeControl()->cloudRawDropPushToMaxRange();
         const float near_range_mm_sq = near_range * near_range * 1000.0f * 1000.0f;
         const bool  near_gate_on = (near_range > 0.0f && near_conf > 0);
         for (int i = 0; i < total_points; ++i) {
@@ -726,12 +733,57 @@ void publishIntensityCloud(capture_Image_List_t* stream, int idx)
                 drop = (mx * mx + my * my + mz * mz) < near_range_mm_sq;
             }
             if (drop) {
-                *iter_x = 0.0f; ++iter_x;
-                *iter_y = 0.0f; ++iter_y;
-                *iter_z = 0.0f; ++iter_z;
-                *iter_intensity = 0; ++iter_intensity;
-                *iter_confidence = 0; ++iter_confidence;
-                *iter_offsettime = 0.0f; ++iter_offsettime;
+                // ⚠️ 被近距离门砍掉的点**不能清零**，要保持方向、把距离推到
+                //    满量程。两个原因：
+                //
+                //  ① 清零会被补洞填回来。pointcloud_depth_converter.cpp 的
+                //     Pass A 靠最小量程门把 (0,0,0) 挡掉，于是那个格子在
+                //     `measured` 里是「没测到」；紧接着 Pass B 补洞，只要周围
+                //     有够多真实邻居、彼此深度落差够小，就用最远那个邻居的深度
+                //     填上。而反光串扰是**成片**的、深度又高度一致（那是一张
+                //     等距离壳，跨度只有几厘米）—— 正好满足补洞的两个条件，
+                //     刚砍掉的假距离被原样填回去。
+                //
+                //  ② 就算没被填回来，清零也不等于「标成空地」，而是看运气：
+                //     清零 → 深度图那像素没值 → 桥接判无效编成 65535 →
+                //     C++ 解出恰好 6.40 米 → 只有光轴附近那几十行的高度才
+                //     落在 0.20~0.90 米的障碍带里、才会拉出清除射线；偏离
+                //     水平的那些点直接被丢掉，那个方向**保持未知**。
+                //     而「未知」对骨架来说是硬墙（voronoi_skeleton_node.py
+                //     把大片未知当 barrier），等于问题换了个形式还在。
+                //
+                // 改写成满量程之后：那个格子在 Pass A 里被标成「已测量」，
+                // 补洞不碰它；深度图里明确是一个远值，桥接/解码/射线投射一路
+                // 走下来就是稳定的「这个方向直到射线上限都是空的」。
+                //
+                // ⚠️ 6400 毫米这个数必须 = SnowNav 的 virtual_camera.py 的
+                //    DEPTH_MAX_M（6.40）= map_ros/depth_filter_maxdist，
+                //    而且必须 **大于** sdf_map/max_ray_length（当前 4.00）——
+                //    小于射线上限的话 sdf_map2d 会把它当成真实回波直接标成
+                //    障碍，方向就反了。
+                const float dx_mm = xyz_data_f[i * 3 + 2];
+                const float dy_mm = -xyz_data_f[i * 3 + 0];
+                const float dz_mm = xyz_data_f[i * 3 + 1];
+                const float norm_mm = std::sqrt(dx_mm * dx_mm + dy_mm * dy_mm + dz_mm * dz_mm);
+                if (drop_push_to_max_range && norm_mm > 1.0f) {
+                    const float scale = 6400.0f / norm_mm;   // 推到 6.40 米
+                    *iter_x = dx_mm * scale / 1000.0f; ++iter_x;
+                    *iter_y = dy_mm * scale / 1000.0f; ++iter_y;
+                    *iter_z = dz_mm * scale / 1000.0f; ++iter_z;
+                    // 强度和置信度保留原值：这个点的语义是「这个方向上收到的
+                    // 是一个弱到不可信的回波」，保留原值方便回放时认出它。
+                    *iter_intensity = intensity_data[i]; ++iter_intensity;
+                    *iter_confidence = confidence_data[i]; ++iter_confidence;
+                    *iter_offsettime = 0.0f; ++iter_offsettime;
+                } else {
+                    // 方向都算不出来（原点附近），只能清零 —— 原有行为。
+                    *iter_x = 0.0f; ++iter_x;
+                    *iter_y = 0.0f; ++iter_y;
+                    *iter_z = 0.0f; ++iter_z;
+                    *iter_intensity = 0; ++iter_intensity;
+                    *iter_confidence = 0; ++iter_confidence;
+                    *iter_offsettime = 0.0f; ++iter_offsettime;
+                }
             } else {
                 // XYZ point
                 *iter_x = xyz_data_f[i * 3 + 2] / 1000.0f; ++iter_x;
