@@ -63,6 +63,25 @@ register_keys:
   # raw dtof data
   senddtof: 1             # 0: off; 1: on
   cloud_raw_confidence_threshold: 35 # please refer to readme for more details
+
+  # 2026-09-15 加：近距离的第二道 confidence 门，专治抛光地面的镜面回波串扰。
+  #   距离 < cloud_raw_near_range_cm 厘米 且 confidence < ..._threshold 的点丢掉。
+  # 为什么要它：那些串扰点在近处读出一个假距离，进占据地图就是「空地上凭空一堵墙」，
+  #   进 rgb_overlay 的遮挡测试就让穿墙的节点画给大模型。它们的共同特征是回波弱。
+  # 依据（17 帧现场 cloud_raw.pcd 实测）：
+  #   0.0~0.5 m  conf 中位 982   低于 500 的占 10.2%
+  #   0.5~1.0 m       中位 918              10.4%
+  #   1.0~1.5 m       中位 576              31.6%
+  #   1.5~2.0 m       中位 497              50.2%   ← 近处强、1~2 米突然弱
+  # 选择性：2 米内会进障碍带（离地 0.20~0.90 m）的点里 conf<500 占 15.0%，
+  #   地面附近（|z|<0.10 m）占 24.5% —— 砍地面的是砍障碍的 1.6 倍。
+  #   总代价：全部点砍掉 8.1%。
+  # ⚠️ 安全：2 米内漏检 = 来不及刹车。深色吸光物体（黑箱子、黑裤子、深色沙发）
+  #   回波本来就弱，这道门会先砍到它们。上机第一趟务必对着深色物体走一遍。
+  # 回退：把 cloud_raw_near_confidence_threshold 设 0（或 near_range_cm 设 0）
+  #   即可整条关掉，然后重启驱动 —— 不用重新编译。
+  cloud_raw_near_range_cm: 200
+  cloud_raw_near_confidence_threshold: 500
   
   # dtof sensor frame rate. Supported values: 100 (10fps) or 145 (14.5fps)
   # Higher frame rate provides smoother point cloud data but may increase data bandwidth

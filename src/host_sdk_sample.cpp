@@ -150,6 +150,8 @@ int g_strict_usb3_0_check = 0;
 int g_use_host_ros_time = 0;
 int g_save_log = 0;
 int g_cloud_raw_confidence_threshold = 35;
+int g_cloud_raw_near_range_cm = 200;
+int g_cloud_raw_near_confidence_threshold = 500;
 int g_dtof_fps = 145;  // DTOF sensor frame rate: 100 (10fps) or 145 (14.5fps)
 
 std::filesystem::path log_root_dir_;
@@ -244,6 +246,19 @@ class RosNodeControlImpl : public RosNodeControlInterface {
             return cloud_raw_confidence_threshold;
         }
 
+        void setCloudRawNearRange(float range_m) override {
+            cloud_raw_near_range = range_m;
+        }
+        float cloudRawNearRange() const override {
+            return cloud_raw_near_range;
+        }
+        void setCloudRawNearConfidenceThreshold(int threshold) override {
+            cloud_raw_near_confidence_threshold = threshold;
+        }
+        int cloudRawNearConfidenceThreshold() const override {
+            return cloud_raw_near_confidence_threshold;
+        }
+
         void setTfExtraPublishRate(int rate_hz) override {
             tf_extra_publish_rate = rate_hz;
         }
@@ -256,6 +271,8 @@ class RosNodeControlImpl : public RosNodeControlInterface {
         bool pub_use_host_ros_time = false;
         bool pub_odom_baselink_tf = false;
         int cloud_raw_confidence_threshold = 35;
+        float cloud_raw_near_range = 2.0f;
+        int cloud_raw_near_confidence_threshold = 500;
         int tf_extra_publish_rate = 0;
     };
     
@@ -2286,6 +2303,14 @@ int main(int argc, char *argv[])
         g_imu_smooth_frequency = get_key_value("imu_smooth_frequency", 400);
         g_cloud_raw_confidence_threshold = get_key_value("cloud_raw_confidence_threshold", 35);
         g_rosNodeControlImpl.setCloudRawConfidenceThreshold(g_cloud_raw_confidence_threshold);
+        // 近距离第二道门（见 host_sdk_sample.h 过滤循环里的注释）。
+        // 距离用「厘米」配，避免 get_key_value 只能读整数；0 = 关掉这道门。
+        g_cloud_raw_near_range_cm = get_key_value("cloud_raw_near_range_cm", 200);
+        g_cloud_raw_near_confidence_threshold =
+            get_key_value("cloud_raw_near_confidence_threshold", 500);
+        g_rosNodeControlImpl.setCloudRawNearRange(g_cloud_raw_near_range_cm / 100.0f);
+        g_rosNodeControlImpl.setCloudRawNearConfidenceThreshold(
+            g_cloud_raw_near_confidence_threshold);
         g_dtof_fps      = get_key_value("dtof_fps", 145);  // Read DTOF frame rate from config (100=10fps, 145=14.5fps)
         g_sendodom      = get_key_value("sendodom", 1);
         g_send_odom_baselink_tf = get_key_value("send_odom_baselink_tf", 0);

@@ -250,6 +250,11 @@ class RosNodeControlInterface {
         virtual bool sendOdomBaseLinkTF() const = 0;
         virtual void setCloudRawConfidenceThreshold(int threshold) = 0;
         virtual int cloudRawConfidenceThreshold() const = 0;
+        // 近距离的第二道门：距离 < nearRange 且 confidence < nearThreshold 的点丢掉。
+        virtual void setCloudRawNearRange(float range_m) = 0;
+        virtual float cloudRawNearRange() const = 0;
+        virtual void setCloudRawNearConfidenceThreshold(int threshold) = 0;
+        virtual int cloudRawNearConfidenceThreshold() const = 0;
         virtual void setTfExtraPublishRate(int rate_hz) = 0;
         virtual int getTfExtraPublishRate() const = 0;
     };
@@ -691,8 +696,36 @@ void publishIntensityCloud(capture_Image_List_t* stream, int idx)
         uint8_t* intensity_data = static_cast<uint8_t*>(stream->imageList[2].pAddr);
         uint16_t* confidence_data = static_cast<uint16_t*>(stream->imageList[3].pAddr);
         int confidence_threshold = getRosNodeControl()->cloudRawConfidenceThreshold();
+        // 近距离第二道门（2026-09-15 加）：抛光地面的镜面回波会串扰进旁边本该
+        // 没回波的像素，在近处读出一个假距离 —— 那些假点进了占据地图就是「空地
+        // 上凭空一堵墙」，进了 rgb_overlay 的遮挡测试就让穿墙的节点画给大模型。
+        // 它们的共同特征是**回波弱**：17 帧现场数据实测，0~1 米的真回波
+        // confidence 中位 918~982、低于 500 的只占 10%，而 1.5~2.0 米那一档
+        // 中位掉到 497、一半在 500 以下 —— 近处强、1~2 米突然弱，正是串扰的样子。
+        // 这道门的选择性也对：2 米内会进障碍带（离地 0.20~0.90 米）的点里
+        // conf<500 的占 15.0%，而地面附近（|z|<0.10）的占 24.5%，砍地面的是
+        // 砍障碍的 1.6 倍。总代价：全部点砍掉 8.1%。
+        // ⚠️ 在这里砍是刻意的：confidence 只活到 depth_image_ros_node.cpp:120
+        //    那行 pcl::PointCloud<pcl::PointXYZ>，再往下游就没有了。在源头砍
+        //    一次，深度图 / 占据地图 / RVG 的遮挡测试三边一起生效。
+        // ⚠️ 安全风险：2 米内漏检 = 来不及刹车。深色吸光物体（黑箱子、黑裤子）
+        //    回波本来就弱，抬这道门会先砍到它们。近处（<1 米）实测只掉 10%，
+        //    但 1~2 米那一档掉得多，**上机第一趟务必对着深色物体走一遍**。
+        //    出问题就把 cloud_raw_near_confidence_threshold 调低或设 0 关掉。
+        const float near_range = getRosNodeControl()->cloudRawNearRange();
+        const int   near_conf  = getRosNodeControl()->cloudRawNearConfidenceThreshold();
+        const float near_range_mm_sq = near_range * near_range * 1000.0f * 1000.0f;
+        const bool  near_gate_on = (near_range > 0.0f && near_conf > 0);
         for (int i = 0; i < total_points; ++i) {
-            if (confidence_data[i] < confidence_threshold) {
+            bool drop = (confidence_data[i] < confidence_threshold);
+            if (!drop && near_gate_on && confidence_data[i] < near_conf) {
+                // xyz_data_f 单位是毫米，平方比较省一次开方
+                const float mx = xyz_data_f[i * 3 + 0];
+                const float my = xyz_data_f[i * 3 + 1];
+                const float mz = xyz_data_f[i * 3 + 2];
+                drop = (mx * mx + my * my + mz * mz) < near_range_mm_sq;
+            }
+            if (drop) {
                 *iter_x = 0.0f; ++iter_x;
                 *iter_y = 0.0f; ++iter_y;
                 *iter_z = 0.0f; ++iter_z;
