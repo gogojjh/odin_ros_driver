@@ -15,6 +15,7 @@ limitations under the License.
 #include "yaml_parser.h"
 #include "rawCloudRender.h"
 #include "odin_calib_path.h"
+#include "odin_calib_validation.h"
 #include <filesystem> 
 #include <thread>
 #include <string>
@@ -40,6 +41,7 @@ limitations under the License.
 #include <cstdio>
 #include <array>
 #include <system_error>
+#include <cerrno>
 // #include <yaml-cpp/yaml.h>
 #include <iomanip>
 #include <sstream>
@@ -64,6 +66,31 @@ limitations under the License.
 #define required_firmware_version_major 0
 #define required_firmware_version_minor 13
 #define required_firmware_version_patch 0
+
+namespace {
+// Keep incomplete SDK downloads away from the live file. A temporary directory
+// under the destination parent also guarantees that rename stays on one volume.
+class CalibTempDirectory {
+public:
+    explicit CalibTempDirectory(const std::filesystem::path& parent) {
+        std::string pattern = (parent / ".calib-download-XXXXXX").string();
+        std::vector<char> buffer(pattern.begin(), pattern.end());
+        buffer.push_back('\0');
+        char* created = ::mkdtemp(buffer.data());
+        if (!created) {
+            throw std::system_error(errno, std::generic_category(), "create calibration staging directory");
+        }
+        path = created;
+    }
+    ~CalibTempDirectory() {
+        std::error_code ignored;
+        std::filesystem::remove_all(path, ignored);
+    }
+    CalibTempDirectory(const CalibTempDirectory&) = delete;
+    CalibTempDirectory& operator=(const CalibTempDirectory&) = delete;
+    std::filesystem::path path;
+};
+}  // namespace
 
 // Global variable declarations
 static device_handle odinDevice = nullptr;
@@ -1576,64 +1603,85 @@ static void lidar_device_callback(const lidar_device_info_t* device, bool attach
 
         std::string calib_config = calib_runtime_dir + "/calib.yaml";
         calib_file_ = calib_config;
-        // Also fetch when the calib file is missing at the target path, so a resume
-        // (STREAM_STOPPED) on a fresh runtime dir still produces calib.yaml.
-        bool need_calib_file = get_calib_file || !std::filesystem::exists(calib_config);
+        // STREAM_STOPPED may reuse a valid calibration, but never an empty or
+        // malformed file. The SDK can return success after a failed download.
+        std::string calib_reason;
+        bool need_calib_file = get_calib_file ||
+            !odin_ros_driver::ValidateOdinCalibFile(calib_config, calib_reason);
         if (need_calib_file) {
-            if (lidar_get_calib_file(odinDevice, calib_runtime_dir.c_str())) {
+            try {
+                if (ec_mkdir) {
+                    throw std::system_error(ec_mkdir, "create calibration runtime directory");
+                }
+                CalibTempDirectory staged(calib_runtime_dir);
+                const std::string download_dir = staged.path.string();
+                const std::filesystem::path downloaded = staged.path / "calib.yaml";
+                // The signal handler already owns device cleanup during shutdown.
+                if (g_shutdown_requested.load()) {
+                    return;
+                }
+                const int status = lidar_get_calib_file(odinDevice, download_dir.c_str());
+                if (g_shutdown_requested.load()) {
+                    return;
+                }
+                if (status != 0) {
+                    throw std::runtime_error("SDK calibration download returned " + std::to_string(status));
+                }
+                if (!odin_ros_driver::ValidateOdinCalibFile(downloaded.string(), calib_reason)) {
+                    throw std::runtime_error("downloaded calibration is invalid: " + calib_reason);
+                }
+                std::filesystem::rename(downloaded, calib_config);
+            } catch (const std::exception& e) {
                 #ifdef ROS2
-                    RCLCPP_ERROR(rclcpp::get_logger("device_cb"), "Failed to get calibration file");
+                    RCLCPP_ERROR(rclcpp::get_logger("device_cb"),
+                                 "Calibration retrieval failed; existing file preserved: %s", e.what());
                 #else
-                    ROS_ERROR("Failed to get calibration file");
+                    ROS_ERROR("Calibration retrieval failed; existing file preserved: %s", e.what());
                 #endif
                 lidar_close_device(odinDevice);
                 lidar_destory_device(odinDevice);
                 odinDevice = nullptr;
                 return;
             }
-
-            // Print the primary save path
             #ifdef ROS2
-                RCLCPP_INFO(rclcpp::get_logger("device_cb"), "========== [CALIB] SAVED -> %s ==========", calib_config.c_str());
+                RCLCPP_INFO(rclcpp::get_logger("device_cb"),
+                            "========== [CALIB] VALIDATED AND SAVED -> %s ==========", calib_config.c_str());
             #else
-                ROS_INFO("========== [CALIB] SAVED -> %s ==========", calib_config.c_str());
-            #endif
-
-            #ifdef ROS2
-                RCLCPP_INFO(rclcpp::get_logger("device_cb"), "Successfully retrieved calibration files");
-            #else
-                ROS_INFO("Successfully retrieved calibration files");
+                ROS_INFO("========== [CALIB] VALIDATED AND SAVED -> %s ==========", calib_config.c_str());
             #endif
         } else {
             #ifdef ROS2
-                RCLCPP_INFO(rclcpp::get_logger("device_cb"), "Skipping calibration retrieval for current device state");
+                RCLCPP_INFO(rclcpp::get_logger("device_cb"), "Reusing validated calibration for current device state");
             #else
-                ROS_INFO("Skipping calibration retrieval for current device state");
+                ROS_INFO("Reusing validated calibration for current device state");
             #endif
         }
 
-        // Always mirror the primary calib to the package config dir as a backup,
-        // regardless of whether it was freshly fetched or reused (resume case).
-        if (std::filesystem::exists(calib_config)) {
-            try {
-                std::filesystem::create_directories(config_dir);
-                std::filesystem::path backup_path = std::filesystem::path(config_dir) / "calib.yaml";
-                std::filesystem::copy_file(calib_config, backup_path,
-                    std::filesystem::copy_options::overwrite_existing);
-                #ifdef ROS2
-                    RCLCPP_INFO(rclcpp::get_logger("device_cb"), "========== [CALIB] BACKUP -> %s ==========", backup_path.string().c_str());
-                #else
-                    ROS_INFO("========== [CALIB] BACKUP -> %s ==========", backup_path.string().c_str());
-                #endif
-            } catch (const std::exception& e) {
-                #ifdef ROS2
-                    RCLCPP_WARN(rclcpp::get_logger("device_cb"), "Failed to save calibration backup to config dir: %s", e.what());
-                #else
-                    ROS_WARN("Failed to save calibration backup to config dir: %s", e.what());
-                #endif
+        // Validate the staged backup before atomically replacing the old backup.
+        // Never propagate a corrupt runtime file over the last usable copy.
+        try {
+            std::filesystem::create_directories(config_dir);
+            CalibTempDirectory staged_backup(config_dir);
+            const std::filesystem::path staged_file = staged_backup.path / "calib.yaml";
+            const std::filesystem::path backup_path = std::filesystem::path(config_dir) / "calib.yaml";
+            std::filesystem::copy_file(calib_config, staged_file);
+            if (!odin_ros_driver::ValidateOdinCalibFile(staged_file.string(), calib_reason)) {
+                throw std::runtime_error("refusing invalid calibration backup: " + calib_reason);
             }
+            std::filesystem::rename(staged_file, backup_path);
+            #ifdef ROS2
+                RCLCPP_INFO(rclcpp::get_logger("device_cb"), "========== [CALIB] BACKUP -> %s ==========", backup_path.string().c_str());
+            #else
+                ROS_INFO("========== [CALIB] BACKUP -> %s ==========", backup_path.string().c_str());
+            #endif
+        } catch (const std::exception& e) {
+            #ifdef ROS2
+                RCLCPP_WARN(rclcpp::get_logger("device_cb"), "Failed to save calibration backup; previous backup preserved: %s", e.what());
+            #else
+                ROS_WARN("Failed to save calibration backup; previous backup preserved: %s", e.what());
+            #endif
         }
-        
+
         // Push device identity / version into the binary data logger's info.txt.
         // SN is parsed from the first comment line of calib.yaml (e.g. "# O1-P010100043").
         // No-op when recorddata=0 (logger not initialized).

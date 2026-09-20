@@ -207,6 +207,7 @@ if(ROS_VERSION STREQUAL "ROS1")
     )
     add_executable(pcd2depth_node src/pcd2depth_ros.cpp)
     target_link_libraries(pcd2depth_node
+        yaml-cpp
     depth_image_ros_node
     ${catkin_LIBRARIES}
     ${OpenCV_LIBS}
@@ -236,6 +237,11 @@ if(ROS_VERSION STREQUAL "ROS1")
     # Installation rules
     install(TARGETS host_sdk_sample
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+    )
+
+    # 相机内参发布节点(Python)。不注册的话 roslaunch 按 type= 找不到它。
+    catkin_install_python(PROGRAMS scripts/odin_camera_info_pub.py
+        DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
     )
     
     install(DIRECTORY include/

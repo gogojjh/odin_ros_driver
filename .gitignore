@@ -2,3 +2,8 @@ recorddata/
 /config/calib.yaml
 /log
 /map
+__pycache__/
+
+*.pyc
+
+*.bak-*

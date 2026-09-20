@@ -17,11 +17,7 @@ limitations under the License.
 
 #include "depth_image_ros_node.hpp"
 #include "odin_calib_path.h"
-
-bool fileExists(const std::string& filename) {
-    struct stat buffer;
-    return (stat(filename.c_str(), &buffer) == 0);
-}
+#include "odin_calib_validation.h"
 
 int main(int argc, char **argv)
 {
@@ -43,10 +39,12 @@ int main(int argc, char **argv)
     }
     
     ROS_INFO("========== [CALIB] WAIT <- %s ==========", calib_file_path.c_str());
-    while(ros::ok() && !fileExists(calib_file_path))
+    std::string calib_error;
+    while(ros::ok() && !odin_ros_driver::ValidateOdinCalibFile(calib_file_path, calib_error))
     {
-        ROS_INFO_THROTTLE(5, "Still waiting for calib.yaml file...");
-        ros::Duration(0.5).sleep(); 
+        ROS_WARN_THROTTLE(5, "Waiting for valid calibration: %s (%s)",
+                         calib_file_path.c_str(), calib_error.c_str());
+        ros::WallDuration(0.5).sleep();
         ros::spinOnce();
     }
     
@@ -56,7 +54,7 @@ int main(int argc, char **argv)
         return 0;
     }
     
-    ROS_INFO("Found calib.yaml file! Loading parameters...");
+    ROS_INFO("Found valid calib.yaml file! Loading parameters...");
     
     std::string node_name = ros::this_node::getName();
     std::string rosparam_command = "rosparam load " + calib_file_path + " " + node_name;

@@ -34,4 +34,15 @@
     
     <!-- Launch RViz with configuration -->
     <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_config)" output="screen"/>
+
+    <!-- 相机内参 -> /odin1/camera_info。驱动的 C++ 节点不发 CameraInfo(实测:
+         它发布的 13 个话题里一条都没有), 内参只躺在 calib.yaml 里, 下游各自
+         抄一份、靠注释写"必须逐位一致"来维持 —— 抄错了不报错, 只会让地图慢慢
+         长歪。这个小节点把它读出来按 10 Hz 发(同时 latch), 让内参有唯一的源头。
+         发的是**去畸变后**那张图的内参, 所以畸变系数 D 全零(理由见脚本文件头)。 -->
+    <node pkg="odin_ros_driver" type="odin_camera_info_pub.py"
+          name="odin_camera_info_pub" output="screen">
+        <param name="frame_id" value="camera_0"/>
+    </node>
+
 </launch>
