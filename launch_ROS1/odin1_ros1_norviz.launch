@@ -17,6 +17,11 @@
     <node pkg="odin_ros_driver" type="pcd2depth_node" name="pcd2depth_node" output="screen" >
         <rosparam command="load" file="$(find odin_ros_driver)/config/control_command.yaml"/>
         <!-- calib_file_path left unset: node falls back to the shared runtime dir (~/.ros/odin_ros_driver/calib.yaml) -->
+        <!-- 点云名字对齐仿真桥的 /habitat/depth_point_cloud(见 nav_sim/depth_cloud.py 的模块说明),
+             方便同一份 rviz 配置真机/仿真都能用;只是改话题名,数值仍是真机原生点云(和仿真那路有
+             6 处不同,不要混着比数字)。这条只是重命名,发布逻辑仍按 depth_cloud_topic 参数生效,
+             订阅数为 0 时不生成(见 depth_image_ros_node.cpp)。 -->
+        <remap from="odin1/depth_img_competetion_cloud" to="habitat/depth_point_cloud"/>
     </node>
 
     <!--
