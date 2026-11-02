@@ -17,11 +17,6 @@
     <node pkg="odin_ros_driver" type="pcd2depth_node" name="pcd2depth_node" output="screen" >
         <rosparam command="load" file="$(find odin_ros_driver)/config/control_command.yaml"/>
         <!-- calib_file_path left unset: node falls back to the shared runtime dir (~/.ros/odin_ros_driver/calib.yaml) -->
-        <!-- 2026-11-02 网页可视化慢的根因:这路点云只有网页桥一个订阅者,默认隔 5 像素
-             取一点,实测 67721 点/帧 × 32 B × 14.4 Hz ≈ 250 Mbps。只影响 generateColoredCloud
-             这一路点云的采样密度(pointcloud_depth_converter.cpp:359),不影响深度图 depth_image_pub_
-             和其他输出。调到 20(约按 (5/20)^2 缩放 ≈ 4.2k 点/帧)把这一路压到约 15.6 Mbps。 -->
-        <param name="point_sampling_rate" value="20"/>
         <!-- 点云名字对齐仿真桥的 /habitat/depth_point_cloud(见 nav_sim/depth_cloud.py 的模块说明),
              方便同一份 rviz 配置真机/仿真都能用;只是改话题名,数值仍是真机原生点云(和仿真那路有
              6 处不同,不要混着比数字)。这条只是重命名,发布逻辑仍按 depth_cloud_topic 参数生效,
