@@ -20,11 +20,8 @@
         <!-- 2026-11-02 网页可视化慢的根因:这路点云只有网页桥一个订阅者,默认隔 5 像素
              取一点,实测 67721 点/帧 × 32 B × 14.4 Hz ≈ 250 Mbps。只影响 generateColoredCloud
              这一路点云的采样密度(pointcloud_depth_converter.cpp:359),不影响深度图 depth_image_pub_
-             和其他输出。11-02 先调到 20(约 15.6 Mbps),用户随后改为下面的 10 + 5 Hz。 -->
-        <!-- 11-02 用户改:隔 10 像素取一点(约 1.7 万点/帧)+ 这一路固定 5 Hz(depth_cloud_rate_hz,
-             只限点云、深度图照旧每帧发),估算约 22 Mbps。 -->
-        <param name="point_sampling_rate" value="10"/>
-        <param name="depth_cloud_rate_hz" value="5.0"/>
+             和其他输出。调到 20(约按 (5/20)^2 缩放 ≈ 4.2k 点/帧)把这一路压到约 15.6 Mbps。 -->
+        <param name="point_sampling_rate" value="20"/>
         <!-- 点云名字对齐仿真桥的 /habitat/depth_point_cloud(见 nav_sim/depth_cloud.py 的模块说明),
              方便同一份 rviz 配置真机/仿真都能用;只是改话题名,数值仍是真机原生点云(和仿真那路有
              6 处不同,不要混着比数字)。这条只是重命名,发布逻辑仍按 depth_cloud_topic 参数生效,
