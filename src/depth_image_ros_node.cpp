@@ -44,6 +44,7 @@ DepthImageRosNode::DepthImageRosNode(ros::NodeHandle &nh, ros::NodeHandle &pnh)
 
     depth_image_pub_ = it_.advertise(depth_image_topic_, 1);
     depth_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(depth_cloud_topic_, 1);
+    pnh_.param<double>("depth_cloud_rate_hz", depth_cloud_rate_hz_, 0.0);
 
     ROS_INFO("DepthImageRosNode initialized successfully");
 }
@@ -145,8 +146,20 @@ void DepthImageRosNode::syncCallback(const sensor_msgs::PointCloud2ConstPtr &clo
 
     // 2026-08-25 延迟优化：/odin1/depth_img_competetion_cloud 没人订阅时不生成
     // 彩色点云（publishDepthCloud 对空云本来就不发，这里连生成都省掉）。
-    auto result = depth_converter_->processCloudAndImage(
-        cloud, img_raw, depth_cloud_pub_.getNumSubscribers() > 0);
+    bool want_cloud = depth_cloud_pub_.getNumSubscribers() > 0;
+    if (want_cloud && depth_cloud_rate_hz_ > 0.0)
+    {
+        const ros::Time stamp = cloud_msg->header.stamp;
+        const ros::Duration period(1.0 / depth_cloud_rate_hz_);
+        // 时间戳倒退(重放 / 驱动重置)或落后一个周期以上时,从当前帧重新排
+        if (depth_cloud_next_due_.isZero() || stamp < depth_cloud_next_due_ - period ||
+            stamp > depth_cloud_next_due_ + period)
+            depth_cloud_next_due_ = stamp;
+        want_cloud = stamp >= depth_cloud_next_due_;
+        if (want_cloud)
+            depth_cloud_next_due_ += period;
+    }
+    auto result = depth_converter_->processCloudAndImage(cloud, img_raw, want_cloud);
 
     if (!result.success)
     {

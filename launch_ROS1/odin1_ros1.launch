@@ -23,8 +23,11 @@
         <!-- 2026-11-02:同 odin1_ros1_norviz.launch 的注释 —— 这个点云话题(经 odin1_ros1_norviz.launch
              remap 后给网页可视化订阅)默认隔 5 像素取一点,实测 67721 点/帧 × 32 B × 14.4 Hz ≈ 250 Mbps。
              只影响 generateColoredCloud 这一路点云的采样密度(pointcloud_depth_converter.cpp:359),
-             不影响深度图 depth_image_pub_ 和其他输出。调到 20 把这一路压到约 15.6 Mbps(约 4.2k 点/帧)。 -->
-        <param name="point_sampling_rate" value="20"/>
+             不影响深度图 depth_image_pub_ 和其他输出。11-02 先调到 20(约 15.6 Mbps),用户随后改为下面的 10 + 5 Hz。 -->
+        <!-- 11-02 用户改:隔 10 像素取一点(约 1.7 万点/帧)+ 这一路固定 5 Hz(depth_cloud_rate_hz,
+             只限点云、深度图照旧每帧发),估算约 22 Mbps。 -->
+        <param name="point_sampling_rate" value="10"/>
+        <param name="depth_cloud_rate_hz" value="5.0"/>
     </node>
 
     <node pkg="odin_ros_driver" type="cloud_reprojection_node" name="cloud_reprojection_node" output="screen" >

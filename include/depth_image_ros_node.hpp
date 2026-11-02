@@ -63,6 +63,10 @@ private:
 
     image_transport::Publisher depth_image_pub_;
     ros::Publisher depth_cloud_pub_;
+    // 2026-11-02:彩色点云这一路限频(只给网页可视化看,原样跟输入 14.4 Hz 太占 Wi-Fi);
+    // <= 0 不限。按输入时间戳排到下一次该发的时刻,平均正好是这个频率。深度图不受影响。
+    double depth_cloud_rate_hz_ = 0.0;
+    ros::Time depth_cloud_next_due_;
 
     std::unique_ptr<PointCloudToDepthConverter> depth_converter_;
 
